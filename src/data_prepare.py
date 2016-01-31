@@ -127,15 +127,35 @@ def build_input_data(sentences, labels, vocabulary):
     return [x, y]
 
 
+def transform_text(text, vocabulary):
+    """
+    Transform text to list index that can be fed into CNN and LSTM
+    :param text:
+    :param vocabulary: {word: index} mapping
+    :return:
+    """
+    words = clean_str(text).split(' ')
+    print words
+    words = [vocabulary[i] for i in words if i in vocabulary]
+    return words
+
+
+
+
 if __name__ == "__main__":
     sentences, labels = load_data_and_labels()
     print str(len(sentences)) + " sentences read"
     vocabulary, vocabulary_inv = build_vocab(sentences)
     print "Vocabulary size: "+str(len(vocabulary))
-    word2vec = vocab_to_word2vec("../data/GoogleNews-vectors-negative300.bin", vocabulary)
-    embedding_mat = build_word_embedding_mat(word2vec, vocabulary_inv)
-    x, y = build_input_data(sentences, labels, vocabulary)
-    cPickle.dump([x, y, embedding_mat], open('../data/train_mat.pkl', 'wb'))
-    cPickle.dump(word2vec, open('../data/word2vec.pkl', 'wb'))
+
+
+    print transform_text("I Like you, girl! hello...", vocabulary)
+
+    # word2vec = vocab_to_word2vec("../data/GoogleNews-vectors-negative300.bin", vocabulary)
+    # embedding_mat = build_word_embedding_mat(word2vec, vocabulary_inv)
+    # x, y = build_input_data(sentences, labels, vocabulary)
+    # cPickle.dump([x, y, embedding_mat], open('../data/train_mat.pkl', 'wb'))
+    # cPickle.dump(word2vec, open('../data/word2vec.pkl', 'wb'))
+    cPickle.dump(vocabulary, open('../data/vocab.pkl', 'wb'))
     print "Data created"
 

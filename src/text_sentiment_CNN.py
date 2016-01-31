@@ -17,6 +17,8 @@ from sklearn.cross_validation import train_test_split
 from keras.preprocessing import sequence
 from utils import expand_label
 from sklearn.metrics import accuracy_score, roc_auc_score
+from data_prepare import transform_text
+
 
 class TextCNN:
     def __init__(self, embedding_mat=None, maxlen=56, filter_length=3,
@@ -110,6 +112,16 @@ class TextCNN:
     def auc_score(self, X_test, y_test):
         y_pred = self.predict_prob(X_test)[:,1]
         return roc_auc_score(y_test, y_pred)
+
+    def predict_text(self, X_text, vocab):
+        """
+        Get a list of texts and make predictions directly
+        :param X_text:
+        :param vocab:
+        :return:
+        """
+        x = [transform_text(i, vocab) for i in X_text]
+        return self.predict_prob(x)
 
 
 if __name__ == "__main__":

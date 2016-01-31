@@ -19,6 +19,7 @@ from sklearn.cross_validation import train_test_split
 from keras.preprocessing import sequence
 from utils import expand_label
 from sklearn.metrics import accuracy_score, roc_auc_score
+from data_prepare import transform_text
 
 class TextLSTM:
     def __init__(self, embedding_mat=None, maxlen=56,
@@ -102,18 +103,42 @@ class TextLSTM:
         y_pred = self.predict_prob(X_test)[:,1]
         return roc_auc_score(y_test, y_pred)
 
+    def predict_text(self, X_text, vocab):
+        """
+        Get a list of texts and make predictions directly
+        :param X_text:
+        :param vocab:
+        :return:
+        """
+        x = [transform_text(i, vocab) for i in X_text]
+        return self.predict_prob(x)
+
+
 
 if __name__ == "__main__":
     print "Loading the data"
     x, y, embedding_mat = cPickle.load(open('../data/train_mat.pkl'))
+    vocab = cPickle.load(open('../data/vocab.pkl'))
 
     print "Train Test split"
     X_train, X_test, y_train, y_test = train_test_split(x, y,test_size=0.2, random_state=42)
 
     print "Training"
     clf = TextLSTM(embedding_mat=embedding_mat)
-    clf.fit(X_train, y_train, X_test, y_test, nb_epoch=4)
-    clf.save_weights()
+    # clf.fit(X_train, y_train, X_test, y_test, nb_epoch=4)
+    # clf.save_weights()
+
+    print "Loading"
+    clf.load_model()
+    texts = [
+        "I like you.",
+        "I am extremely angry",
+        "I feel sorry...",
+        "I studied in NYU."
+    ]
+    l = clf.predict_text(texts, vocab)
+    print l[:,1]
+
 
     print "Evaluation on test set"
     print "Accuracy: %.3f" %clf.accuracy_score(X_test, y_test)
