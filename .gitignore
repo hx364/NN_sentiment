@@ -5,4 +5,4 @@
 *.csv
 *.h5
 *.txt
-data_x_y_w2v.p
+*.p
