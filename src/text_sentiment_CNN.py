@@ -7,21 +7,23 @@ import itertools
 from collections import Counter
 import cPickle
 import numpy as np
-from keras.optimizers import RMSprop
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation, Flatten
+from keras.optimizers import RMSprop, Adadelta
+from keras.models import Sequential, Graph
+from keras.layers.core import Dense, Dropout, Activation, Flatten,Merge
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
 from keras.layers.recurrent import LSTM
+from keras.regularizers import l2
 from keras.layers.embeddings import Embedding
 from sklearn.cross_validation import train_test_split
 from keras.preprocessing import sequence
+from keras.callbacks import EarlyStopping
 from utils import expand_label
 from sklearn.metrics import accuracy_score, roc_auc_score
 from data_prepare import transform_text
 
 
 class TextCNN:
-    def __init__(self, embedding_mat=None, maxlen=56, filter_length=3,
+    def __init__(self, embedding_mat=None, maxlen=56, filter_length=[3, 4, 5],
                  nb_filters=300, n_vocab=10000, embedding_dims=300):
         """
 
@@ -43,34 +45,54 @@ class TextCNN:
         self.nb_filters = nb_filters
 
         print "Building the model"
-        self.model=Sequential()
+        self.model=Graph()
+        self.model.add_input('input', input_shape=(self.maxlen,), dtype='int')
 
         #Model embedding layer, for word index-> word embedding transformation
         if embedding_mat is not None:
-            self.model.add(Embedding(self.n_vocab, self.embedding_dims,
-                            weights=[embedding_mat], input_length=self.maxlen))
+            self.model.add_node(Embedding(self.n_vocab, self.embedding_dims,
+                            weights=[embedding_mat], input_length=self.maxlen),
+                                name='embedding', input='input')
         else:
-            self.model.add(Embedding(self.n_vocab, self.embedding_dims, input_length=self.maxlen))
+            self.model.add_node(Embedding(self.n_vocab, self.embedding_dims, input_length=self.maxlen),
+                                          name='embedding', input='input')
 
+        #define the different filters
+        conv_layer = []
+        nb_filter_each = nb_filters/len(filter_length)
+        for each_length in filter_length:
+            self.model.add_node(Convolution1D(
+                                         nb_filter=nb_filter_each,
+                                         filter_length=each_length,
+                                         border_mode='valid',
+                                         activation='relu',
+                                         subsample_length=1),
+                                        name=str(each_length)+'_convolution',
+                                        input='embedding')
+            self.model.add_node(MaxPooling1D(pool_length=(self.maxlen-each_length)/1+1),
+                                        name=str(each_length)+'_pooling',
+                                        input=str(each_length)+'_convolution')
+            self.model.add_node(Flatten(), name=str(each_length)+'_flatten', input=str(each_length)+'_pooling')
+            conv_layer.append(str(each_length)+'_flatten')
+        print conv_layer
+        # self.model.add(Merge(conv_layer, mode='concat'))
         #1D convolution layer
-        self.model.add(Convolution1D(input_dim=self.embedding_dims,
-                        nb_filter=self.nb_filters,
-                        filter_length=self.filter_length,
-                        border_mode="valid",
-                        activation="relu",
-                        subsample_length=1))
-        self.model.add(Dropout(0.5))
-        #Maxpolling layer
-        self.model.add(MaxPooling1D(pool_length=((self.maxlen - self.filter_length) / 1) + 1))
+
         #Flatten Layer
-        self.model.add(Flatten())
-        self.model.add(Dense(2))
-        self.model.add(Activation('softmax'))
-        self.model.compile(loss='binary_crossentropy', optimizer='rmsprop')
+        # self.model.add(Flatten())
+        self.model.add_node(Dropout(0.5), name='dropout', inputs=conv_layer)
+        self.model.add_node(Dense(2, W_regularizer=l2(0.01)), name='full_connect', input='dropout')
+        self.model.add_node(Activation('softmax'), name='softmax', input='full_connect')
+
+        adadelta = Adadelta(lr=0.95, rho=0.95, epsilon=1e-6)
+        self.model.add_output(name='output', input='softmax')
+
+        self.model.compile(loss={'output': 'binary_crossentropy'}, optimizer=adadelta)
+
 
 
     def fit(self, X_train, y_train, X_test, y_test,
-            batch_size=100, nb_epoch=3, show_accuracy=True):
+            batch_size=50, nb_epoch=3):
         """
 
         :param X_train: each instance is a list of word index
@@ -87,8 +109,11 @@ class TextCNN:
         y_train = expand_label(y_train)
         y_test = expand_label(y_test)
 
-        self.model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=nb_epoch,
-          show_accuracy=True, validation_data=(X_test, y_test))
+        #early stopping
+        early_stop = EarlyStopping(monitor='val_loss', patience=2)
+
+        self.model.fit({'input': X_train, 'output': y_train}, batch_size=batch_size, nb_epoch=nb_epoch,
+          verbose=1, validation_data=({'input': X_test, 'output': y_test}), callbacks=[early_stop])
 
     def save_weights(self, fname='../data/text_cnn_weights.h5'):
         self.model.save_weights(fname)
@@ -99,11 +124,14 @@ class TextCNN:
 
     def predict(self, X_test):
         X_test = sequence.pad_sequences(X_test, maxlen=self.maxlen)
-        return self.model.predict_classes(X_test)
+        X_pred = np.array(self.model.predict({'input': X_test})['output'])
+        X_pred = np.argmax(X_pred, axis=1)
+        return X_pred
 
     def predict_prob(self, X_test):
         X_test = sequence.pad_sequences(X_test, maxlen=self.maxlen)
-        return self.model.predict_proba(X_test)
+        X_pred = np.array(self.model.predict({'input': X_test})['output'])
+        return X_pred
 
     def accuracy_score(self, X_test, y_test):
         y_pred = self.predict(X_test)
@@ -133,10 +161,11 @@ if __name__ == "__main__":
 
     print "Training"
     clf = TextCNN(embedding_mat=embedding_mat)
-    clf.fit(X_train, y_train, X_test, y_test)
+    clf.fit(X_train, y_train, X_test, y_test, nb_epoch=10)
+    # clf.load_model(fname='../data/cnn_diff_filter.h5')
 
     print "Dumping the model"
-    clf.save_weights()
+    clf.save_weights(fname='../data/cnn_diff_filter.h5')
 
     print "Evaluation on test set"
     print "Accuracy: %.3f" %clf.accuracy_score(X_test, y_test)

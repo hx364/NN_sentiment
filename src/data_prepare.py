@@ -8,14 +8,6 @@ import itertools
 from collections import Counter
 import cPickle
 import numpy as np
-from keras.optimizers import RMSprop
-from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation, Flatten
-from keras.layers.convolutional import Convolution1D, MaxPooling1D
-from keras.layers.recurrent import LSTM
-from keras.layers.embeddings import Embedding
-from sklearn.cross_validation import train_test_split
-from keras.preprocessing import sequence
 
 
 def clean_str(string):
@@ -39,15 +31,15 @@ def clean_str(string):
     return string.strip().lower()
 
 
-def load_data_and_labels():
+def load_data_and_labels(folder_name):
     """
     Loads MR polarity data from files, splits the data into words and generates labels.
     Returns split sentences and labels.
     """
     # Load data from files
-    positive_examples = list(open("../data/rt-polarity.pos").readlines())
+    positive_examples = list(open(folder_name+"rt-polarity.pos").readlines())
     positive_examples = [s.strip() for s in positive_examples]
-    negative_examples = list(open("../data/rt-polarity.neg").readlines())
+    negative_examples = list(open(folder_name+"rt-polarity.neg").readlines())
     negative_examples = [s.strip() for s in negative_examples]
     # Split by words
     x_text = positive_examples + negative_examples
@@ -69,7 +61,7 @@ def build_vocab(sentences):
     # Mapping from index to word
     vocabulary_inv = [x[0] for x in word_counts.most_common()]
     # Mapping from word to index
-    vocabulary = {x: i for i, x in enumerate(vocabulary_inv)}
+    vocabulary = {x: i+1 for i, x in enumerate(vocabulary_inv)}
     return [vocabulary, vocabulary_inv]
 
 def vocab_to_word2vec(fname, vocab, k=300):
@@ -111,10 +103,12 @@ def build_word_embedding_mat(word_vecs, vocabulary_inv, k=300):
     ith row is the embedding of ith word in vocabulary
     """
     vocab_size = len(vocabulary_inv)
-    embedding_mat = np.zeros(shape=(vocab_size, k), dtype='float32')
+    embedding_mat = np.zeros(shape=(vocab_size+1, k), dtype='float32')
     for idx in range(len(vocabulary_inv)):
-        embedding_mat[idx] = word_vecs[vocabulary_inv[idx]]
+        embedding_mat[idx+1] = word_vecs[vocabulary_inv[idx]]
     print "Embedding matrix of size "+str(np.shape(embedding_mat))
+    #initialize the first row,
+    embedding_mat[0]=np.random.uniform(-0.25, 0.25, k)
     return embedding_mat
 
 
@@ -151,10 +145,10 @@ if __name__ == "__main__":
 
     print transform_text("I Like you, girl! hello...", vocabulary)
 
-    # word2vec = vocab_to_word2vec("../data/GoogleNews-vectors-negative300.bin", vocabulary)
-    # embedding_mat = build_word_embedding_mat(word2vec, vocabulary_inv)
-    # x, y = build_input_data(sentences, labels, vocabulary)
-    # cPickle.dump([x, y, embedding_mat], open('../data/train_mat.pkl', 'wb'))
+    word2vec = vocab_to_word2vec("../data/GoogleNews-vectors-negative300.bin", vocabulary)
+    embedding_mat = build_word_embedding_mat(word2vec, vocabulary_inv)
+    x, y = build_input_data(sentences, labels, vocabulary)
+    cPickle.dump([x, y, embedding_mat], open('../data/train_mat.pkl', 'wb'))
     # cPickle.dump(word2vec, open('../data/word2vec.pkl', 'wb'))
     cPickle.dump(vocabulary, open('../data/vocab.pkl', 'wb'))
     print "Data created"
