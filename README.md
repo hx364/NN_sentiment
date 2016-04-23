@@ -26,3 +26,4 @@ Implement sentiment classification on document level. The basic idea is to stack
 ## Result
 * See Yoon's paper for the performance of Model 1
 * Model 3 reaches 70.2% accuracy in 5-class classification on yelp-2015 dataset.
+* TODO: also worth trying regression as the cost function on yelp data.
